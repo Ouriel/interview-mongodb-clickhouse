@@ -79,6 +79,22 @@ object Main {
         .toMat(Sink.ignore)(Keep.both)
         .run()
 
+    val (killSwitch, future) =
+      MongoSource(db.watch(Seq(pipeline)).fullDocument(FullDocument.UPDATE_LOOKUP))
+        .map(chg => chg.getFullDocument)
+        .map{
+          case user if user.contains("created_at") => UserEvent(user.getDate("updated_at"), user.getString("_id"), "sign-up")
+          case logs if logs.contains("userId") =>  UserEvent(logs.getDate("date"), logs.getString("userId"), logs.getString("event"))
+        }
+
+        .map(event => write(event))
+        .groupedWithin (config.clickhouse.batchSize, config.clickhouse.batchTime)
+        .mapAsync(config.concurrence) { records =>
+          clickhouseClient.insertRecords(records)
+        }
+        .viaMat(KillSwitches.single)(Keep.right)
+        .toMat(Sink.ignore)(Keep.both)
+        .run()
 
     sys.addShutdownHook({
       killSwitchUser.shutdown()

@@ -2,7 +2,7 @@ name := "mongodb-clickhouse"
 
 version := "0.1"
 
-scalaVersion := "2.12.6"
+scalaVersion := "2.12.7"
 
 
 scalacOptions ++= Seq(
@@ -22,8 +22,8 @@ libraryDependencies += "org.json4s" %% "json4s-ext" % "3.6.+"
 libraryDependencies += "com.github.pureconfig" %% "pureconfig" % "0.9.+"
 libraryDependencies += "org.dispatchhttp" %% "dispatch-core" % "0.14.+"
 
-mainClass in (Compile, run) := Some("com.storetail.Main")
-mainClass in assembly := Some("com.storetail.Main")
+mainClass in (Compile, run) := Some("Main")
+mainClass in assembly := Some("Main")
 
 assemblyMergeStrategy in assembly := {
   case  n if n.startsWith("META-INF") => MergeStrategy.discard
