@@ -1,0 +1,56 @@
+version: '3'
+services:
+  mongo-rs0-1:
+    build: ./mongo-rs0-1
+    ports:
+      - '27017:27017'
+    depends_on:
+      - 'mongo-rs0-2'
+      - 'mongo-rs0-3'
+
+  mongo-rs0-2:
+    image: 'mongo'
+    command: --replSet rs0 --smallfiles --oplogSize 128 --logpath=/dev/null
+    ports:
+      - '27018:27017'
+
+  mongo-rs0-3:
+    image: 'mongo'
+    command: --replSet rs0 --smallfiles --oplogSize 128 --logpath=/dev/null
+    ports:
+      - '27019:27017'
+
+  setup-rs:
+    build: ./setup
+    depends_on:
+      - 'mongo-rs0-1'
+
+  data-faker:
+    build: ./data-faker
+    depends_on:
+      - 'setup-rs'
+    environment:
+      - DB_URL='mongodb://mongo-rs0-1,mongo-rs0-2,mongo-rs0-3'
+      - REPLICA_SET_NAME=rs0
+      - TICK_INTERVAL=1000
+      - QUIET=false
+    # Uncomment the lines below if you need to perform development on the
+    # data-faker service
+    # command: ['npm', 'start']
+    # volumes:
+    #   - ./data-faker:/usr/app
+
+  clickhouse:
+    image: yandex/clickhouse-server
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+
+  mongodb-clickhouse:
+    build: ./mongodb-clickhouse
+    depends_on:
+      - clickhouse
+      - mongo-rs0-1
+    environment:
+      - DB_URL='mongodb://mongo-rs0-1,mongo-rs0-2,mongo-rs0-3'
+      - REPLICA_SET_NAME=rs0

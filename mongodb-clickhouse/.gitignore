@@ -1,0 +1,10 @@
+
+.idea/
+project/project/
+project/target/
+src/test/
+target/
+browscap.csv
+
+### Linux template
+*~
