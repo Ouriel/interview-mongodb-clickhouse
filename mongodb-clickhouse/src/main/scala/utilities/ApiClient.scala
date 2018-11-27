@@ -17,7 +17,7 @@ import scala.concurrent.{ExecutionContext, Future}
   */
 abstract class ApiClient {
 
-  private val config = ConfigFactory.load().getConfig("storetail.utils.commons.api")
+  private val config = ConfigFactory.load().getConfig("mongodb-clickhouse.utils.commons.api")
 
   private val LoggedBodyLimit = 1000
 

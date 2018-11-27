@@ -1,4 +1,6 @@
 
+import java.util.Date
+
 import akka.actor.ActorSystem
 import akka.stream.alpakka.mongodb.scaladsl.MongoSource
 import akka.stream.scaladsl.{Keep, Sink}
@@ -15,7 +17,7 @@ import org.mongodb.scala.bson.conversions.Bson
 import org.mongodb.scala.model.{Aggregates, Filters}
 import org.slf4j.LoggerFactory
 import pureconfig.loadConfigOrThrow
-import utilities.{Config, LoggerMagnet}
+import utilities.{Config, DateFormat, LoggerMagnet}
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
@@ -36,10 +38,11 @@ object Main {
     import scala.concurrent.ExecutionContext.Implicits.global
     implicit val formats = DefaultFormats ++ org.json4s.ext.JavaTimeSerializers.all
 
-
     val clickhouseClient = new ClickhouseClient
 
     Await.result(clickhouseClient.createUserLogTable, Duration.Inf)
+    Await.result(clickhouseClient.createAggregatingView, Duration.Inf)
+
 
     val usersCodecRegistry = fromRegistries(fromProviders(classOf[User]), DEFAULT_CODEC_REGISTRY)
     val logsCodecRegistry = fromRegistries(fromProviders(classOf[Logs]), DEFAULT_CODEC_REGISTRY)
@@ -51,9 +54,45 @@ object Main {
 
     val pipeline: Bson = Aggregates.`match`(Filters.in("operationType", "insert", "update"))
 
-
     log.info("Starting akka stream mongodb to clickhouse")
-    val (killSwitchUser, futureUser) =
+
+    val (killSwitch, future) =
+      MongoSource(db.watch(Seq(pipeline)).fullDocument(FullDocument.UPDATE_LOOKUP))
+        .map(chg => chg.getFullDocument)
+        .map{
+          case user if user.contains("createdAt") =>
+            UserEvent(DateFormat.getDateAsString(user.getDate("updatedAt")), user.getObjectId("_id").toHexString, "sign-up")
+          case logs if logs.contains("userId") =>
+            UserEvent(DateFormat.getDateAsString(logs.getDate("date")), logs.getObjectId("userId").toHexString, logs.getString("event"))
+          case dc => log.error(s"weird document in a change $dc")
+            UserEvent(DateFormat.getDateAsString(new Date()), "", "ERROR")
+        }
+        .filter(ev => ev.eventType != "ERROR")
+        .map(event => write(event))
+        .groupedWithin (config.clickhouse.batchSize, config.clickhouse.batchTime)
+        .mapAsync(config.concurrence) { records =>
+          clickhouseClient.insertRecords(records)
+        }
+        .viaMat(KillSwitches.single)(Keep.right)
+        .toMat(Sink.ignore)(Keep.both)
+        .run()
+
+    sys.addShutdownHook({
+      killSwitch.shutdown()
+    })
+
+    log.info("akka stream started, to shutdown send ctrl+c or call /shutdown")
+    val result = Await.result(future, Duration.Inf)
+    log.info(s"Finishing with value : $result")
+    mat.shutdown()
+    Await.result(system.terminate(), config.shutdownTimeout)
+    log.info("Terminated... Bye")
+    sys.exit()
+  }
+}
+
+
+/*   val (killSwitchUser, futureUser) =
       MongoSource(usersColl.watch(Seq(pipeline)).fullDocument(FullDocument.UPDATE_LOOKUP))
       .map(userChg => userChg.getFullDocument)
       .map(user => UserEvent(user.getDate("updated_at"), user.getString("_id"), "sign-up"))
@@ -77,36 +116,4 @@ object Main {
         }
         .viaMat(KillSwitches.single)(Keep.right)
         .toMat(Sink.ignore)(Keep.both)
-        .run()
-
-    val (killSwitch, future) =
-      MongoSource(db.watch(Seq(pipeline)).fullDocument(FullDocument.UPDATE_LOOKUP))
-        .map(chg => chg.getFullDocument)
-        .map{
-          case user if user.contains("created_at") => UserEvent(user.getDate("updated_at"), user.getString("_id"), "sign-up")
-          case logs if logs.contains("userId") =>  UserEvent(logs.getDate("date"), logs.getString("userId"), logs.getString("event"))
-        }
-
-        .map(event => write(event))
-        .groupedWithin (config.clickhouse.batchSize, config.clickhouse.batchTime)
-        .mapAsync(config.concurrence) { records =>
-          clickhouseClient.insertRecords(records)
-        }
-        .viaMat(KillSwitches.single)(Keep.right)
-        .toMat(Sink.ignore)(Keep.both)
-        .run()
-
-    sys.addShutdownHook({
-      killSwitchUser.shutdown()
-      killSwitchLogs.shutdown()
-    })
-
-    log.info("akka stream started, to shutdown send ctrl+c or call /shutdown")
-    val result = Await.result(Future.sequence(Seq(futureUser, futureLogs)), Duration.Inf)
-    log.info(s"Finishing with value : $result")
-    mat.shutdown()
-    Await.result(system.terminate(), config.shutdownTimeout)
-    log.info("Terminated... Bye")
-    sys.exit()
-  }
-}
+        .run()*/

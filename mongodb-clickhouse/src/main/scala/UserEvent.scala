@@ -3,7 +3,7 @@ import java.util.Date
 
 import org.bson.types.ObjectId
 
-case class UserEvent(timestamp: Date,
+case class UserEvent(timestamp: String,
                      userId: String,
                      eventType: String,
                     )

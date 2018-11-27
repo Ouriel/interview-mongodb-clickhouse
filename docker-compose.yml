@@ -54,3 +54,7 @@ services:
     environment:
       - DB_URL='mongodb://mongo-rs0-1,mongo-rs0-2,mongo-rs0-3'
       - REPLICA_SET_NAME=rs0
+
+  clickhouse-client:
+    image: yandex/clickhouse-client
+    
