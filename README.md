@@ -1,22 +1,25 @@
-At the moment npm can't build data-faker due to npm dependency issue (was working last night)
-https://github.com/dominictarr/event-stream/issues/116
+*At the moment npm can't build data-faker due to npm dependency issue* (was working last night)  
+Github issue : https://github.com/dominictarr/event-stream/issues/116
 
-Here is a simple solution, 
+Here is a simple solution,  
 It's pushing all the event into a clickhouse server using scala akka stream
 
-ther is only one table containing everything : default.events
+ther is only one table containing everything : default.events  
+There is a second table for auto aggregation of metric : default.events_agg (see example)  
 no storage of username and password (GDPR & Security)
-There is a second table for auto aggregation of metric 
 
+## Testing
 To run everything
 ```sh
 docker-compose up -d
 ```
+
 To execute sql query
 ```sh
 docker-compose run clickhouse-client --host clickhouse
 ```
-Answer to question
+
+## Answer to question
 - Who are the 3 most active users (in term of logins)?
 ```sql
 SELECT userId, 
@@ -57,8 +60,9 @@ from (
 	)
 ```
 
+##Aggregating View
+- some pre-aggregation for faster result (if lots of data)
 
-Aggregating View-> pre-aggregation pour plus de rapidite
 ```sql
 CREATE MATERIALIZED VIEW default.events_agg
 ENGINE = AggregatingMergeTree()
